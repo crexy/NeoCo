@@ -305,10 +305,35 @@ class upbitVBS:
             # 전체 자산 계산
             time.sleep(1)
 
+    def changeIntervalWord(self, interval):
+        if self.interval == "day":
+            return "1d"
+        elif self.interval == "minute1":
+            return "1m"
+        elif self.interval == "minutes3":
+            return "3m"
+        elif self.interval == "minutes5":
+            return "5m"
+        elif self.interval == "minutes10":
+            return "10m"
+        elif self.interval == "minutes15":
+            return "15m"
+        elif self.interval == "minutes30":
+            return "30m"
+        elif self.interval == "minutes60":
+            return "1h"
+        elif self.interval == "minutes240":
+            return "4h"
+
+        return None
+
     # ohlcv 파일 데이터 로드
-    def load_ohlcv_json_file(self, ticker, interval):
+    def load_ohlcv_json_file(self, ticker, interval) -> DataFrame:
         market, coin = ticker.split("-")
-        with open(f'./data/{coin}_{market}-{interval}.json') as f:
+        timeframe = self.changeIntervalWord(interval)
+        if timeframe is None:
+            return None
+        with open(f'./data/{coin}_{market}-{timeframe}.json') as f:
             ohlcv_data = json.load(f)
         df = pd.DataFrame(ohlcv_data, columns=['date', 'open', 'high', 'low', 'close', 'volume'])
         df['buy'] = 0
@@ -324,10 +349,15 @@ class upbitVBS:
     # 백테스팅
     def backtesting(self, tickers, balance, k):
 
+        dict
         for ticker in self.tickers:
-            df = self.load_ohlcv_json_file(ticker, "1m")
-            df_base = df[["open"]]
+            df = self.load_ohlcv_json_file(ticker, "minute1")
+            df_base = df[["date", "open"]]
+            df_base.rename(columns={"open":"price"}, inplace=True)
             df_ohlcv = self.load_ohlcv_json_file(ticker, self.interval)
+            df_merged = pd.merge(df_base, df_ohlcv, left_on='date', right_on='date', how='left')
+
+
 
         #     org_columns = df_informative.columns
         #     new_columns = [x + "_" + timeframe for x in org_columns]
@@ -362,7 +392,7 @@ if __name__ == "__main__":
     # 4. hyperparameter 적용
 
     upBitVBS = upbitVBS(1000000, ["KRW-BTC", "KRW-GMT"], 100000)
-    upBitVBS.backtesting(1)
+    upBitVBS.backtesting(["KRW-BTC", "KRW-GMT"], 1000000, 1)
     #upBitlarryW.trading(True, 1)
 
     # dict_price = pyupbit.get_current_price(["KRW-BTC", "KRW-GMT"])
