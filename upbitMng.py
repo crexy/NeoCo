@@ -7,6 +7,7 @@ from pandas import DataFrame
 import time
 import datetime
 import cryptocode
+import math
 
 
 #from strategy.Breakeout_strategy import Breakout_strategy
@@ -98,7 +99,6 @@ class UpbitManage:
         df['buy_price'] = 0
         df['sell_price'] = 0
         df['high_price'] = 0
-
         df['ror'] = 1 # Rate Of Return
         df['date'] = df['date'].apply(lambda x: pd.to_datetime(x, unit='ms').strftime('%Y-%m-%d %H:%M'))
         return df
@@ -297,22 +297,40 @@ class UpbitManage:
                 # check if the informative function is actually declared.
                 if informative_func_str in strategy_prop_list:
                     # if it is declared, execute! as eval()
-                    informative_df = eval(express)
+                    df_informative = eval(express)
                     # renaming informative dataframe columns as 'origin name + _timeframe'
                     # ex) if timeframe is '4h'
                     #     open -> open_4h
-                    org_columns = informative_df.columns
+                    org_columns = df_informative.columns
                     new_columns = [x + "_" + timeframe for x in org_columns]
                     new_columns[0] = 'date'
-                    informative_df.columns = new_columns
+                    df_informative.columns = new_columns
                     # merging main timeframe's dataframe and informative timeframe's dataframe
-                    df_merged = pd.merge(df_main, informative_df, left_on='date', right_on='date', how='left')
+                    df_merged = pd.merge(df_main, df_informative, left_on='date', right_on='date', how='left')
 
+                    # if the first merged columns that from informative timeframe is nan, it means that there are no match date data
+                    # between main timeframe and informative timeframe.
+                    # so we are going to fill it with nearest data from "informative timeframe".
+                    if math.isnan(df_merged.iloc[0]["open_"+timeframe]): # 메인 과 인포 데이터가 첫 라인부터 일치하지 않음
+                        # 첫라인의 시간과 가장 가까운 인포의 데이터를 찾아 채워줌
+                        min_delta = datetime.datetime.now().timestamp()
+                        nearest_date = None
+                        for info_date in df_informative.date:
+                            delta = abs((info_date - df_merged.date[0]).total_seconds())
+                            if min_delta > delta:
+                                min_delta = delta
+                                nearest_date = info_date
+                        idx_info = df_informative[df_informative["date"] == nearest_date].index[0]
+                        idx_mrg = df_merged.index[0]
+                        df_merged.loc[idx_mrg, "open_" + timeframe] = df_informative.loc[idx_info, "open_" + timeframe]
+                        df_merged.loc[idx_mrg, "high_" + timeframe] = df_informative.loc[idx_info, "high_" + timeframe]
+                        df_merged.loc[idx_mrg, "low_" + timeframe] = df_informative.loc[idx_info, "low_" + timeframe]
+                        df_merged.loc[idx_mrg, "close_" + timeframe] = df_informative.loc[idx_info, "close_" + timeframe]
+                        df_merged.loc[idx_mrg, "volume_" + timeframe] = df_informative.loc[idx_info, "volume_" + timeframe]
+                        df_merged.loc[idx_mrg, "value_" + timeframe] = df_informative.loc[idx_info, "value_" + timeframe]
+                    df_main = df_merged.ffill()
 
-
-
-                    df_main = df_main.ffill()
-                    df_main = self.strategy.populate_indicator(df_main, meta_dict)
+        df_main = self.strategy.populate_indicator(df_main, meta_dict)
         return True
 
     def buy_coin(self, dry_run:bool, coin:str, market:str, price:int) -> bool:
@@ -389,7 +407,6 @@ class UpbitManage:
                     print(f"Ticker: {ticker}")
                     continue
 
-                # TODO: 매수 매도 시 로그 저장 방식/방법
                 # 원칙1: 가장 간단한 방법 부터 검토 하여 구현 후 문제점 발견시 개선 및 refactoring 수행
                 # 원칙2: 코드는 목적이 아니라 수단이다. 코드에 매몰되어 시간을 허비 하지 말자
 
